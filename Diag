@@ -18,3 +18,15 @@ RETURN
         ADDCOLUMNS ( EXCEPT ( _cur, _hist ), "Side", "only/different in FACT_ALLREPO" ),
         ADDCOLUMNS ( EXCEPT ( _hist, _cur ), "Side", "only/different in FACT_ALLREPO_HIST" )
     )
+
+
+
+EVALUATE
+ROW (
+    "Haircut_CUR_sample", MAXX ( TOPN ( 1, FILTER ( FACT_ALLREPO, NOT ISBLANK ( FACT_ALLREPO[Haircut] ) ) ), FACT_ALLREPO[Haircut] ),
+    "Haircut_HIST_sample", MAXX ( TOPN ( 1, FILTER ( FACT_ALLREPO_HIST, NOT ISBLANK ( FACT_ALLREPO_HIST[Haircut] ) ) ), FACT_ALLREPO_HIST[Haircut] ),
+    "CurrCodeBuy_nonblank_HIST", COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, NOT ISBLANK ( FACT_ALLREPO_HIST[CurrCodeBuy] ) ) ),
+    "Entity_nonblank_HIST", COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, NOT ISBLANK ( FACT_ALLREPO_HIST[Entity] ) ) ),
+    "CDR_nonblank_CUR", COUNTROWS ( FILTER ( FACT_ALLREPO, NOT ISBLANK ( FACT_ALLREPO[CDR_BOPCode] ) ) ),
+    "CDR_nonblank_HIST", COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, NOT ISBLANK ( FACT_ALLREPO_HIST[CDR_BOPCCode] ) ) )
+)
