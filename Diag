@@ -1,0 +1,20 @@
+EVALUATE
+ROW (
+    "HIST_Min", MIN ( FACT_ALLREPO_HIST[SnapshotDate] ),
+    "HIST_Max", MAX ( FACT_ALLREPO_HIST[SnapshotDate] ),
+    "CUR_Min",  MIN ( FACT_ALLREPO[SnapshotDate] ),
+    "CUR_Max",  MAX ( FACT_ALLREPO[SnapshotDate] ),
+    "HIST_Rows", COUNTROWS ( FACT_ALLREPO_HIST ),
+    "CUR_Rows",  COUNTROWS ( FACT_ALLREPO )
+)
+
+
+EVALUATE
+VAR _cols = SELECTCOLUMNS ( INFO.VIEW.COLUMNS (), "T", [Table], "C", [Name], "Ty", [DataType] )
+VAR _cur  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_ALLREPO" ),      "C", [C], "Ty", [Ty] )
+VAR _hist = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_ALLREPO_HIST" ), "C", [C], "Ty", [Ty] )
+RETURN
+    UNION (
+        ADDCOLUMNS ( EXCEPT ( _cur, _hist ), "Side", "only/different in FACT_ALLREPO" ),
+        ADDCOLUMNS ( EXCEPT ( _hist, _cur ), "Side", "only/different in FACT_ALLREPO_HIST" )
+    )
