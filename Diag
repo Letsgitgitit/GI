@@ -55,3 +55,75 @@ validated = if List.Count(missingCols) > 0 then
                     [FileName = fileName]
                 )
             else promoted,
+
+
+Here's the complete `AddSheetData` step with edit 3 applied. Replace your existing one from `AddSheetData = Table.AddColumn(...)` down to its closing `),` just before `// 5. COMBINE ALL FILES`:
+
+```
+    AddSheetData = Table.AddColumn(AddFormatType, "SheetData", (row) =>
+        let
+            fileName    = row[Name],
+            fileDate    = row[FileDate],
+            formatType  = row[FormatType],
+            fileContent = row[Content],
+
+            isV25File    = Text.Contains(fileName, "_V25.6.2_"),
+            expectedCols = Record.Field(FormatDefinitions, formatType)[Columns],
+
+            csv      = Csv.Document(fileContent, [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+            promoted = Table.PromoteHeaders(csv, [PromoteAllScalars = true]),
+
+            actualCols  = Table.ColumnNames(promoted),
+            missingCols = List.Difference(expectedCols, actualCols),
+
+            // Old files must not contain New-format-only columns
+            unexpectedCols = if formatType = "Old"
+                then List.Intersect({actualCols, NewFormatColumns})
+                else {},
+
+            // GUARD — must be part of the evaluation chain, otherwise M never runs it.
+            // Returns `promoted` on success so downstream steps consume this value.
+            validated =
+                if List.Count(missingCols) > 0 then
+                    error Error.Record(
+                        "Missing Required Columns",
+                        "File: " & fileName & " (Format: " & formatType & ")" &
+                        " | Missing: " & Text.Combine(missingCols, ", "),
+                        [FileName = fileName, FormatType = formatType, MissingColumns = missingCols]
+                    )
+                else if List.Count(unexpectedCols) > 0 then
+                    error Error.Record(
+                        "Format Mismatch",
+                        "File: " & fileName & " classified as Old but contains New columns: " &
+                        Text.Combine(unexpectedCols, ", "),
+                        [FileName = fileName, UnexpectedColumns = unexpectedCols]
+                    )
+                else
+                    promoted,
+
+            withAllColumns = List.Accumulate(
+                MasterColumns, validated,
+                (state, col) =>
+                    if List.Contains(Table.ColumnNames(state), col)
+                        then state
+                        else Table.AddColumn(state, col, each null)
+            ),
+            reordered = Table.SelectColumns(withAllColumns, MasterColumns),
+
+            fixedContextId = if isV25File then
+                Table.TransformColumns(reordered, {
+                    {"ContextId", each
+                        if _ = "TODAY"
+                        then "Q" & Text.Replace(Date.ToText(fileDate, "yyyy-MM-dd"), "-", "")
+                        else _,
+                        type text}
+                }) else reordered,
+
+            withMetadata = Table.AddColumn(
+                Table.AddColumn(fixedContextId, "SourceFile", each fileName, type text),
+                "FileDate", each fileDate, type date
+            )
+        in
+            withMetadata
+    ),
+```
