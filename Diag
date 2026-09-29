@@ -30,3 +30,28 @@ ROW (
     "CDR_nonblank_CUR", COUNTROWS ( FILTER ( FACT_ALLREPO, NOT ISBLANK ( FACT_ALLREPO[CDR_BOPCode] ) ) ),
     "CDR_nonblank_HIST", COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, NOT ISBLANK ( FACT_ALLREPO_HIST[CDR_BOPCCode] ) ) )
 )
+
+
+"CCYNotionalBond",
+    "CurrCodeBuy", "CurrCodeCash", "CurrCodeSecurity", "CurrCodeSell",
+    "Category_ssj", "Country_ssj", "CountryName_ssj", "EconomicSector_ssj",
+    "CodeIsinSJ", "Entity",
+    "CommentOnCPDate", "CommentOnCP_SSJDate",
+
+
+
+validated = if List.Count(missingCols) > 0 then
+                error Error.Record(
+                    "Missing Required Columns",
+                    "File: " & fileName & " (Format: " & formatType & ")" &
+                    " | Missing: " & Text.Combine(missingCols, ", "),
+                    [FileName = fileName, FormatType = formatType, MissingColumns = missingCols]
+                )
+            else if formatType = "Old" and List.Count(List.Intersect({actualCols, NewFormatColumns})) > 0 then
+                error Error.Record(
+                    "Format Mismatch",
+                    "File: " & fileName & " classified as Old but contains New columns: " &
+                    Text.Combine(List.Intersect({actualCols, NewFormatColumns}), ", "),
+                    [FileName = fileName]
+                )
+            else promoted,
