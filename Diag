@@ -126,22 +126,46 @@ validated = if List.Count(missingCols) > 0 then
 
 
 
-FixDecimals = Table.TransformColumns(PadIds,
+// 10. TYPE CONVERSIONS — locale-tolerant numeric parsing
+    // Some source files use a decimal comma ("1,2" instead of "1.2"), which makes
+    // Table.TransformColumnTypes(..., type number) fail. Try the invariant form first,
+    // then retry with the comma swapped for a period.
+    NumericCols = {
+        "AmountBuy", "AmountBuy_EUR", "AmountSell", "AmountSell_EUR",
+        "SumAmountBuySell_EUR", "RiskBrut_EUR", "RiskNet_EUR", "MarkToMark_EUR",
+        "MTMSecurity", "MTMSecurity_EUR", "MTMCash", "MTMCash_EUR",
+        "NotionalBond", "NotionalBond_EUR", "CashAmount", "CashAmount_EUR",
+        "HaircutValue", "Haircut", "IA", "IA_EUR"
+    },
+
+    TypedTable = Table.TransformColumns(
+        PadIds,
         List.Transform(
-            {"AmountBuy", "AmountBuy_EUR", "AmountSell", "AmountSell_EUR",
-             "SumAmountBuySell_EUR", "RiskBrut_EUR", "RiskNet_EUR", "MarkToMark_EUR",
-             "MTMSecurity", "MTMSecurity_EUR", "MTMCash", "MTMCash_EUR",
-             "NotionalBond", "NotionalBond_EUR", "CashAmount", "CashAmount_EUR",
-             "HaircutValue", "Haircut", "IA", "IA_EUR"},
+            NumericCols,
             each {_, (v) =>
                 if v = null then null
-                else let t = Text.From(v)
-                     in try Number.From(t, "en-US")
-                        otherwise try Number.From(Text.Replace(t, ",", "."), "en-US")
-                        otherwise null,
+                else
+                    let t = Text.Trim(Text.From(v))
+                    in  if t = "" then null
+                        else try Number.From(t, "en-US")
+                             otherwise try Number.From(Text.Replace(t, ",", "."), "en-US")
+                             otherwise null,
                 type nullable number}
-        )
+        ),
+        MissingField.Ignore
     ),
+
+    // 11. DROP METADATA & UNNECESSARY COLUMNS (preserved from your original)
+    FinalColumns = Table.RemoveColumns(TypedTable, {
+        "ContextId", "OBEId", "OBEIdName",
+        "SourceFile", "FileDate",
+        "FreezeCP", "FreezeCPDate",
+        "RestrictedDealsCP", "RestrictedDealsCPDate",
+        "CommentOnCP", "CommentOnCP_SSJ",
+        "FreezeCP_SSJ", "FreezeCP_SSJDate"
+    }, MissingField.Ignore)
+in
+    FinalColumns
 
 
 = Table.SelectRows(TypedTable, each [Haircut] is error)
