@@ -56,10 +56,6 @@ validated = if List.Count(missingCols) > 0 then
                 )
             else promoted,
 
-
-Here's the complete `AddSheetData` step with edit 3 applied. Replace your existing one from `AddSheetData = Table.AddColumn(...)` down to its closing `),` just before `// 5. COMBINE ALL FILES`:
-
-```
     AddSheetData = Table.AddColumn(AddFormatType, "SheetData", (row) =>
         let
             fileName    = row[Name],
@@ -126,4 +122,27 @@ Here's the complete `AddSheetData` step with edit 3 applied. Replace your existi
         in
             withMetadata
     ),
-```
+
+
+
+
+FixDecimals = Table.TransformColumns(PadIds,
+        List.Transform(
+            {"AmountBuy", "AmountBuy_EUR", "AmountSell", "AmountSell_EUR",
+             "SumAmountBuySell_EUR", "RiskBrut_EUR", "RiskNet_EUR", "MarkToMark_EUR",
+             "MTMSecurity", "MTMSecurity_EUR", "MTMCash", "MTMCash_EUR",
+             "NotionalBond", "NotionalBond_EUR", "CashAmount", "CashAmount_EUR",
+             "HaircutValue", "Haircut", "IA", "IA_EUR"},
+            each {_, (v) =>
+                if v = null then null
+                else let t = Text.From(v)
+                     in try Number.From(t, "en-US")
+                        otherwise try Number.From(Text.Replace(t, ",", "."), "en-US")
+                        otherwise null,
+                type nullable number}
+        )
+    ),
+
+
+= Table.SelectRows(TypedTable, each [Haircut] is error)
+
