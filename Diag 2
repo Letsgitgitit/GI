@@ -259,6 +259,43 @@ RETURN
 ORDER BY [Grp], [CPY]
 
 
+// ---------- Q9 — RECONC: authorisations whose ONLY line is the total line ------------
+// Added after reading the raw 2026 row: auth 655025 has a single 6M line flagged
+// IsLigneTotal = Y. The (Individual) measures keep detail lines only (all three flags
+// FALSE), so an authorisation that has nothing but a total line is invisible to them.
+// Util_Total_TotalOnly = the EUR utilisation those measures miss on the latest date.
+EVALUATE
+VAR _d = MAX ( FACT_RECONC[SnapshotDate] )
+VAR _a =
+    ADDCOLUMNS (
+        CALCULATETABLE ( VALUES ( FACT_RECONC[AuthorisationId] ), FACT_RECONC[SnapshotDate] = _d ),
+        "D_Lines", CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d,
+                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
+        "T_Lines", CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[IsEnvelopeTotal] = TRUE () ),
+        "D_Util",  CALCULATE ( SUM ( FACT_RECONC[UtilEUR] ), FACT_RECONC[SnapshotDate] = _d,
+                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
+        "T_Util",  CALCULATE ( SUM ( FACT_RECONC[UtilEUR] ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[IsEnvelopeTotal] = TRUE () )
+    )
+RETURN
+    ROW (
+        "Auths",                COUNTROWS ( _a ),
+        "Auths_TotalOnly",      COUNTROWS ( FILTER ( _a, [D_Lines] = 0 && [T_Lines] > 0 ) ),
+        "Auths_DetailOnly",     COUNTROWS ( FILTER ( _a, [D_Lines] > 0 && [T_Lines] = 0 ) ),
+        "Auths_Both",           COUNTROWS ( FILTER ( _a, [D_Lines] > 0 && [T_Lines] > 0 ) ),
+        "Util_Detail_All",      SUMX ( _a, [D_Util] ),
+        "Util_Total_All",       SUMX ( _a, [T_Util] ),
+        "Util_Total_TotalOnly", SUMX ( FILTER ( _a, [D_Lines] = 0 && [T_Lines] > 0 ), [T_Util] )
+    )
+
+
+// ---------- Q10 — RECONC: is the extract CA-CIB-only? --------------------------------
+// There is no E1010001 column in RECONC; NiveauCouvert = "OBE" on the sample row.
+// One value only => the extract is already scoped; several => an entity filter is needed.
+EVALUATE
+SUMMARIZECOLUMNS ( FACT_RECONC[NiveauCouvert], "Rows", COUNTROWS ( FACT_RECONC ) )
+]
+
+
 
 
 P1 parquet 
