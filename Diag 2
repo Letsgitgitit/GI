@@ -1,373 +1,211 @@
-P1 checks
 
-
-// ---------- Q1 — Boundaries, null dates, files vs dates (all three pairs) -------------
-// Expect: H_Max <= 2025-12-31, C_Min >= 2026-01-01; NullDate = 0; Files = Dates.
-// Files > Dates  => more than one file loaded for some date => positions doubled.
+// ---------- R1 — RECONC HIST: how big is the "second date" in each file? -------------
+// Every HIST file spans 2 dates (Q7). If the later date is the NEXT file's date, that
+// date holds rows from two files. This sizes it.
 EVALUATE
-UNION (
-    ROW (
-        "Fact", "06",
-        "H_Min", MIN ( FACT_LIMIT_06_HIST[SnapshotDate] ), "H_Max", MAX ( FACT_LIMIT_06_HIST[SnapshotDate] ),
-        "C_Min", MIN ( FACT_LIMIT_06[SnapshotDate] ),      "C_Max", MAX ( FACT_LIMIT_06[SnapshotDate] ),
-        "H_Rows", COUNTROWS ( FACT_LIMIT_06_HIST ),        "C_Rows", COUNTROWS ( FACT_LIMIT_06 ),
-        "H_NullDate", COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, ISBLANK ( FACT_LIMIT_06_HIST[SnapshotDate] ) ) ),
-        "C_NullDate", COUNTROWS ( FILTER ( FACT_LIMIT_06, ISBLANK ( FACT_LIMIT_06[SnapshotDate] ) ) ),
-        "H_Files", DISTINCTCOUNT ( FACT_LIMIT_06_HIST[SourceFile] ), "C_Files", DISTINCTCOUNT ( FACT_LIMIT_06[SourceFile] ),
-        "H_Dates", DISTINCTCOUNT ( FACT_LIMIT_06_HIST[SnapshotDate] ), "C_Dates", DISTINCTCOUNT ( FACT_LIMIT_06[SnapshotDate] )
-    ),
-    ROW (
-        "Fact", "RECONC",
-        "H_Min", MIN ( FACT_RECONC_HIST[SnapshotDate] ), "H_Max", MAX ( FACT_RECONC_HIST[SnapshotDate] ),
-        "C_Min", MIN ( FACT_RECONC[SnapshotDate] ),      "C_Max", MAX ( FACT_RECONC[SnapshotDate] ),
-        "H_Rows", COUNTROWS ( FACT_RECONC_HIST ),        "C_Rows", COUNTROWS ( FACT_RECONC ),
-        "H_NullDate", COUNTROWS ( FILTER ( FACT_RECONC_HIST, ISBLANK ( FACT_RECONC_HIST[SnapshotDate] ) ) ),
-        "C_NullDate", COUNTROWS ( FILTER ( FACT_RECONC, ISBLANK ( FACT_RECONC[SnapshotDate] ) ) ),
-        "H_Files", DISTINCTCOUNT ( FACT_RECONC_HIST[SourceFile] ), "C_Files", DISTINCTCOUNT ( FACT_RECONC[SourceFile] ),
-        "H_Dates", DISTINCTCOUNT ( FACT_RECONC_HIST[SnapshotDate] ), "C_Dates", DISTINCTCOUNT ( FACT_RECONC[SnapshotDate] )
-    ),
-    ROW (
-        "Fact", "16A",
-        "H_Min", MIN ( FACT_LIMIT_16A_HIST[SnapshotDate] ), "H_Max", MAX ( FACT_LIMIT_16A_HIST[SnapshotDate] ),
-        "C_Min", MIN ( FACT_LIMIT_16A[SnapshotDate] ),      "C_Max", MAX ( FACT_LIMIT_16A[SnapshotDate] ),
-        "H_Rows", COUNTROWS ( FACT_LIMIT_16A_HIST ),        "C_Rows", COUNTROWS ( FACT_LIMIT_16A ),
-        "H_NullDate", COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, ISBLANK ( FACT_LIMIT_16A_HIST[SnapshotDate] ) ) ),
-        "C_NullDate", COUNTROWS ( FILTER ( FACT_LIMIT_16A, ISBLANK ( FACT_LIMIT_16A[SnapshotDate] ) ) ),
-        "H_Files", DISTINCTCOUNT ( FACT_LIMIT_16A_HIST[SourceFile] ), "C_Files", DISTINCTCOUNT ( FACT_LIMIT_16A[SourceFile] ),
-        "H_Dates", DISTINCTCOUNT ( FACT_LIMIT_16A_HIST[SnapshotDate] ), "C_Dates", DISTINCTCOUNT ( FACT_LIMIT_16A[SnapshotDate] )
-    )
-)
-// ALSO: write down how many .csv files are in each 2026 folder (Explorer status bar):
-//   G:\_CCC_Data\BMT06\2026   G:\_CCC_Data\repo\RECONC\2026   G:\_CCC_Data\BMT16A\2026
-// C_Files lower than the folder count = files silently dropped.
-
-
-// ---------- Q2 — Column parity, all three pairs (empty result = parity) ---------------
-EVALUATE
-VAR _cols = SELECTCOLUMNS ( INFO.VIEW.COLUMNS (), "T", [Table], "C", [Name], "Ty", [DataType] )
-VAR _c06  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_LIMIT_06" ),       "C", [C], "Ty", [Ty] )
-VAR _h06  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_LIMIT_06_HIST" ),  "C", [C], "Ty", [Ty] )
-VAR _cRC  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_RECONC" ),         "C", [C], "Ty", [Ty] )
-VAR _hRC  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_RECONC_HIST" ),    "C", [C], "Ty", [Ty] )
-VAR _c16  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_LIMIT_16A" ),      "C", [C], "Ty", [Ty] )
-VAR _h16  = SELECTCOLUMNS ( FILTER ( _cols, [T] = "FACT_LIMIT_16A_HIST" ), "C", [C], "Ty", [Ty] )
-RETURN
-    UNION (
-        ADDCOLUMNS ( EXCEPT ( _c06, _h06 ), "Side", "06 current only/diff" ),
-        ADDCOLUMNS ( EXCEPT ( _h06, _c06 ), "Side", "06 HIST only/diff" ),
-        ADDCOLUMNS ( EXCEPT ( _cRC, _hRC ), "Side", "RECONC current only/diff" ),
-        ADDCOLUMNS ( EXCEPT ( _hRC, _cRC ), "Side", "RECONC HIST only/diff" ),
-        ADDCOLUMNS ( EXCEPT ( _c16, _h16 ), "Side", "16A current only/diff" ),
-        ADDCOLUMNS ( EXCEPT ( _h16, _c16 ), "Side", "16A HIST only/diff" )
-    )
-// Predicted from the M: 16A current-only = SGCType, CPHGroupName, ControleZone.
-
-
-// ---------- Q3a — 16A silent-null sweep ----------------------------------------------
-// A count of 0 next to a healthy row count = the ALLREPO failure (column added as null).
-EVALUATE
-ROW (
-    "C_Rows",          COUNTROWS ( FACT_LIMIT_16A ),
-    "H_Rows",          COUNTROWS ( FACT_LIMIT_16A_HIST ),
-    "C_SGCType",       COUNTROWS ( FILTER ( FACT_LIMIT_16A, FACT_LIMIT_16A[SGCType] <> "" ) ),
-    "C_CPHGroupName",  COUNTROWS ( FILTER ( FACT_LIMIT_16A, FACT_LIMIT_16A[CPHGroupName] <> "" ) ),
-    "C_ControleZone",  COUNTROWS ( FILTER ( FACT_LIMIT_16A, FACT_LIMIT_16A[ControleZone] <> "" ) ),
-    "C_CountryName",   COUNTROWS ( FILTER ( FACT_LIMIT_16A, FACT_LIMIT_16A[CountryName] <> "" ) ),
-    "H_CountryName",   COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, FACT_LIMIT_16A_HIST[CountryName] <> "" ) ),
-    "C_MtM_BO_EUR",    COUNTROWS ( FILTER ( FACT_LIMIT_16A, NOT ISBLANK ( FACT_LIMIT_16A[MtM_BO_EUR] ) ) ),
-    "H_MtM_BO_EUR",    COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, NOT ISBLANK ( FACT_LIMIT_16A_HIST[MtM_BO_EUR] ) ) ),
-    "C_EnvHolder",     COUNTROWS ( FILTER ( FACT_LIMIT_16A, NOT ISBLANK ( FACT_LIMIT_16A[EnvelopeHolderId] ) ) ),
-    "H_EnvHolder",     COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, NOT ISBLANK ( FACT_LIMIT_16A_HIST[EnvelopeHolderId] ) ) ),
-    "C_AmountTB1",     COUNTROWS ( FILTER ( FACT_LIMIT_16A, NOT ISBLANK ( FACT_LIMIT_16A[AmountTB1] ) ) ),
-    "H_AmountTB1",     COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, NOT ISBLANK ( FACT_LIMIT_16A_HIST[AmountTB1] ) ) ),
-    "C_Amount_BLANK",  COUNTROWS ( FILTER ( FACT_LIMIT_16A, ISBLANK ( FACT_LIMIT_16A[Amount] ) ) ),
-    "H_Amount_BLANK",  COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, ISBLANK ( FACT_LIMIT_16A_HIST[Amount] ) ) ),
-    "C_Util_BLANK",    COUNTROWS ( FILTER ( FACT_LIMIT_16A, ISBLANK ( FACT_LIMIT_16A[Utilisation] ) ) ),
-    "H_Util_BLANK",    COUNTROWS ( FILTER ( FACT_LIMIT_16A_HIST, ISBLANK ( FACT_LIMIT_16A_HIST[Utilisation] ) ) )
-)
-
-
-// ---------- Q3b — 06 silent-null sweep + structure split -----------------------------
-EVALUATE
-ROW (
-    "C_Rows",          COUNTROWS ( FACT_LIMIT_06 ),
-    "H_Rows",          COUNTROWS ( FACT_LIMIT_06_HIST ),
-    "C_UtilCPY_nz",    COUNTROWS ( FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[UtilCPY] <> 0 ) ),
-    "H_UtilCPY_nz",    COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, FACT_LIMIT_06_HIST[UtilCPY] <> 0 ) ),
-    "C_RicosRegroup",  COUNTROWS ( FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[RicosIdRegroup] <> "" ) ),
-    "H_RicosRegroup",  COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, FACT_LIMIT_06_HIST[RicosIdRegroup] <> "" ) ),
-    "C_BrideId",       COUNTROWS ( FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[BrideId] <> "" ) ),
-    "H_BrideId",       COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, FACT_LIMIT_06_HIST[BrideId] <> "" ) ),
-    "C_Envelope",      COUNTROWS ( FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[StructureType] = "Envelope" ) ),
-    "H_Envelope",      COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, FACT_LIMIT_06_HIST[StructureType] = "Envelope" ) ),
-    "C_Bride",         COUNTROWS ( FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[StructureType] = "Bride" ) ),
-    "H_Bride",         COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, FACT_LIMIT_06_HIST[StructureType] = "Bride" ) ),
-    "C_Amount_BLANK",  COUNTROWS ( FILTER ( FACT_LIMIT_06, ISBLANK ( FACT_LIMIT_06[Amount] ) ) ),
-    "H_Amount_BLANK",  COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, ISBLANK ( FACT_LIMIT_06_HIST[Amount] ) ) ),
-    "C_Util_BLANK",    COUNTROWS ( FILTER ( FACT_LIMIT_06, ISBLANK ( FACT_LIMIT_06[Utilisation] ) ) ),
-    "H_Util_BLANK",    COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, ISBLANK ( FACT_LIMIT_06_HIST[Utilisation] ) ) )
-)
-
-
-// ---------- Q3c — RECONC silent-null sweep -------------------------------------------
-// ValidityDay=Month near 100% => ValidityDate is YYYYMM being parsed as YYYY-MM-MM.
-EVALUATE
-ROW (
-    "C_Rows",           COUNTROWS ( FACT_RECONC ),
-    "H_Rows",           COUNTROWS ( FACT_RECONC_HIST ),
-    "C_BrideAmtEUR",    COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[BrideAmountEUR] ) ) ),
-    "H_BrideAmtEUR",    COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[BrideAmountEUR] ) ) ),
-    "C_BrideUtilEUR",   COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[BrideUtilEUR] ) ) ),
-    "H_BrideUtilEUR",   COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[BrideUtilEUR] ) ) ),
-    "C_ValidityDate",   COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[ValidityDate] ) ) ),
-    "H_ValidityDate",   COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[ValidityDate] ) ) ),
-    "C_ValidDay=Month", COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[ValidityDate] ) && DAY ( FACT_RECONC[ValidityDate] ) = MONTH ( FACT_RECONC[ValidityDate] ) ) ),
-    "H_ValidDay=Month", COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[ValidityDate] ) && DAY ( FACT_RECONC_HIST[ValidityDate] ) = MONTH ( FACT_RECONC_HIST[ValidityDate] ) ) ),
-    "C_CPY_BLANK",      COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[HeadOfficeSirisId] = "" ) ),
-    "H_CPY_BLANK",      COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[HeadOfficeSirisId] = "" ) ),
-    "C_AuthoOrigCcy",   COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[AuthoOrigCcy] ) ) ),
-    "H_AuthoOrigCcy",   COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[AuthoOrigCcy] ) ) ),
-    "C_TotalLines",     COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal] ) ),
-    "H_TotalLines",     COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsEnvelopeTotal] ) ),
-    "C_SubUE",          COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsSubTotalUE] ) ),
-    "H_SubUE",          COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsSubTotalUE] ) ),
-    "C_SubPr",          COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsSubTotalPr] ) ),
-    "H_SubPr",          COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsSubTotalPr] ) ),
-    "C_AmtBreach",      COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsAmountBreach] ) ),
-    "H_AmtBreach",      COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsAmountBreach] ) )
-)
-
-
-// ---------- Q4 — RECONC row levels on the latest date --------------------------------
-// Shows how many rows sit at each level (detail / UE subtotal / product subtotal / total).
-EVALUATE
-VAR _d = MAX ( FACT_RECONC[SnapshotDate] )
-RETURN
+VAR _t =
     ADDCOLUMNS (
-        CALCULATETABLE (
-            SUMMARIZE ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal], FACT_RECONC[IsSubTotalUE], FACT_RECONC[IsSubTotalPr] ),
-            FACT_RECONC[SnapshotDate] = _d
-        ),
-        "Rows",     CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d ),
-        "AuthoEUR", CALCULATE ( SUM ( FACT_RECONC[AuthoEUR] ), FACT_RECONC[SnapshotDate] = _d ),
-        "BlankCPY", CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[HeadOfficeSirisId] = BLANK () )
+        VALUES ( FACT_RECONC_HIST[SourceFile] ),
+        "D1",   CALCULATE ( MIN ( FACT_RECONC_HIST[SnapshotDate] ) ),
+        "D2",   CALCULATE ( MAX ( FACT_RECONC_HIST[SnapshotDate] ) ),
+        "Rows", CALCULATE ( COUNTROWS ( FACT_RECONC_HIST ) )
     )
-
-
-// ---------- Q5 — RECONC grain test: are detail lines additive or cumulative? ---------
-// Detail = none of the three total/subtotal flags. Compared with the total line of the
-// same AuthorisationId on the latest date. (Supersedes the version sent earlier.)
-EVALUATE
-VAR _d = MAX ( FACT_RECONC[SnapshotDate] )
-VAR _a =
+VAR _u =
     ADDCOLUMNS (
-        CALCULATETABLE (
-            VALUES ( FACT_RECONC[AuthorisationId] ),
-            FACT_RECONC[SnapshotDate] = _d,
-            FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE ()
-        ),
-        "D_Lines", CALCULATE ( COUNTROWS ( FACT_RECONC ),
-                       FACT_RECONC[SnapshotDate] = _d,
-                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
-        "D_Sum",   CALCULATE ( SUM ( FACT_RECONC[AuthoEUR] ),
-                       FACT_RECONC[SnapshotDate] = _d,
-                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
-        "D_Max",   CALCULATE ( MAX ( FACT_RECONC[AuthoEUR] ),
-                       FACT_RECONC[SnapshotDate] = _d,
-                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
-        "D_Detail", CALCULATE (
-                       CONCATENATEX ( FACT_RECONC,
-                           FACT_RECONC[TenorQuantite] & FACT_RECONC[TenorUnite] & "=" & FORMAT ( FACT_RECONC[AuthoEUR], "#,0" ), " | " ),
-                       FACT_RECONC[SnapshotDate] = _d,
-                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
-        "T_Lines", CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[IsEnvelopeTotal] = TRUE () ),
-        "T_Amt",   CALCULATE ( MAX ( FACT_RECONC[AuthoEUR] ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[IsEnvelopeTotal] = TRUE () )
+        _t,
+        "Rows_D2",
+            VAR _f = FACT_RECONC_HIST[SourceFile]
+            VAR _d = [D2]
+            RETURN CALCULATE ( COUNTROWS ( FACT_RECONC_HIST ),
+                       FACT_RECONC_HIST[SourceFile] = _f, FACT_RECONC_HIST[SnapshotDate] = _d ),
+        "Tot_D2",
+            VAR _f = FACT_RECONC_HIST[SourceFile]
+            VAR _d = [D2]
+            RETURN CALCULATE ( COUNTROWS ( FACT_RECONC_HIST ),
+                       FACT_RECONC_HIST[SourceFile] = _f, FACT_RECONC_HIST[SnapshotDate] = _d,
+                       FACT_RECONC_HIST[IsEnvelopeTotal] = TRUE () ),
+        "GapDays", INT ( [D2] - [D1] )
     )
 RETURN
-    TOPN (
-        40,
-        ADDCOLUMNS (
-            FILTER ( _a, [D_Lines] >= 2 ),
-            "Verdict",
-                SWITCH (
-                    TRUE (),
-                    ISBLANK ( [T_Amt] ),              "NO TOTAL LINE ON THIS AUTH ID",
-                    ABS ( [D_Sum] - [T_Amt] ) < 1,    "ADDITIVE",
-                    ABS ( [D_Max] - [T_Amt] ) < 1,    "CUMULATIVE (total = max)",
-                    "NEITHER - inspect"
-                )
-        ),
-        [D_Lines], DESC
+    ROW (
+        "Files",                    COUNTROWS ( _u ),
+        "Rows",                     SUMX ( _u, [Rows] ),
+        "Rows_on_later_date",       SUMX ( _u, [Rows_D2] ),
+        "TotalLines_on_later_date", SUMX ( _u, [Tot_D2] ),
+        "Min_Rows_D2",              MINX ( _u, [Rows_D2] ),
+        "Max_Rows_D2",              MAXX ( _u, [Rows_D2] ),
+        "Gap_1day",                 COUNTROWS ( FILTER ( _u, [GapDays] = 1 ) ),
+        "Gap_gt1",                  COUNTROWS ( FILTER ( _u, [GapDays] > 1 ) ),
+        "D2_is_another_files_D1",   COUNTROWS ( FILTER ( _u, VAR _d = [D2] RETURN COUNTROWS ( FILTER ( _t, [D1] = _d ) ) > 0 ) )
     )
 
 
-// ---------- Q6 — RECONC amount scale & sign consistency, both sides ------------------
-// AuthoEUR/UtilEUR go through fnParseZeroPad; DiffEUR goes through Number.From()/100.
-// If both paths scale the same way, Match_AminusU (or Match_UminusA) ~= Checked.
-// Match_abs high but the signed ones low => a sign is being stripped somewhere.
-// Nothing matching => the two paths use different scales (the 100x trap).
-EVALUATE
-ROW (
-    "C_Checked",       COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[DiffEUR] ) ) ),
-    "C_Match_AminusU", COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[DiffEUR] ) && ABS ( FACT_RECONC[AuthoEUR] - FACT_RECONC[UtilEUR] - FACT_RECONC[DiffEUR] ) <= 1 ) ),
-    "C_Match_UminusA", COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[DiffEUR] ) && ABS ( FACT_RECONC[UtilEUR] - FACT_RECONC[AuthoEUR] - FACT_RECONC[DiffEUR] ) <= 1 ) ),
-    "C_Match_abs",     COUNTROWS ( FILTER ( FACT_RECONC, NOT ISBLANK ( FACT_RECONC[DiffEUR] ) && ABS ( ABS ( FACT_RECONC[AuthoEUR] - FACT_RECONC[UtilEUR] ) - ABS ( FACT_RECONC[DiffEUR] ) ) <= 1 ) ),
-    "C_NegDiff",       COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[DiffEUR] < 0 ) ),
-    "C_MaxAutho",      MAX ( FACT_RECONC[AuthoEUR] ),
-    "H_Checked",       COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) ) ),
-    "H_Match_AminusU", COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) && ABS ( FACT_RECONC_HIST[AuthoEUR] - FACT_RECONC_HIST[UtilEUR] - FACT_RECONC_HIST[DiffEUR] ) <= 1 ) ),
-    "H_Match_UminusA", COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) && ABS ( FACT_RECONC_HIST[UtilEUR] - FACT_RECONC_HIST[AuthoEUR] - FACT_RECONC_HIST[DiffEUR] ) <= 1 ) ),
-    "H_Match_abs",     COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) && ABS ( ABS ( FACT_RECONC_HIST[AuthoEUR] - FACT_RECONC_HIST[UtilEUR] ) - ABS ( FACT_RECONC_HIST[DiffEUR] ) ) <= 1 ) ),
-    "H_NegDiff",       COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[DiffEUR] < 0 ) ),
-    "H_MaxAutho",      MAX ( FACT_RECONC_HIST[AuthoEUR] )
-)
-
-
-// ---------- Q7 — RECONC HIST: files whose rows were split across two dates -----------
-// Current side takes the EARLIEST ContextId per file; HIST (unless the Parquet carries a
-// SnapshotDate column) parses ContextId per ROW. Any row returned here = a file whose
-// positions were spread over two days in 2023-2025 history.
+// ---------- R2 — RECONC current: which date has two files? (183 files, 182 dates) ---
 EVALUATE
 FILTER (
     ADDCOLUMNS (
-        VALUES ( FACT_RECONC_HIST[SourceFile] ),
-        "Dates", CALCULATE ( DISTINCTCOUNT ( FACT_RECONC_HIST[SnapshotDate] ) ),
-        "Rows",  CALCULATE ( COUNTROWS ( FACT_RECONC_HIST ) )
+        VALUES ( FACT_RECONC[SnapshotDate] ),
+        "Files", CALCULATE ( DISTINCTCOUNT ( FACT_RECONC[SourceFile] ) ),
+        "Rows",  CALCULATE ( COUNTROWS ( FACT_RECONC ) ),
+        "Names", CALCULATE ( CONCATENATEX ( VALUES ( FACT_RECONC[SourceFile] ), FACT_RECONC[SourceFile], " | " ) )
     ),
-    [Dates] > 1
+    [Files] > 1
 )
 
 
-// ---------- Q8 — 06 UtilCPY: what is it? (latest date, envelope rows only) -----------
-// Looking for: UtilCPY identical across all rows of one Grp, and ~= sum of their Util.
+// ---------- R3 — RECONC DiffEUR on TOTAL lines, current vs HIST ---------------------
+// Round 1: current A-U=D on ~50% of populated rows; HIST on 0.15%, and HIST has DiffEUR
+// populated on every row. This isolates the total lines (the committee grain).
+EVALUATE
+ROW (
+    "C_Tot",          COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal] ) ),
+    "C_Tot_DiffBlank",COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal] && ISBLANK ( FACT_RECONC[DiffEUR] ) ) ),
+    "C_Tot_Match",    COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal] && NOT ISBLANK ( FACT_RECONC[DiffEUR] )
+                          && ABS ( FACT_RECONC[AuthoEUR] - FACT_RECONC[UtilEUR] - FACT_RECONC[DiffEUR] ) <= 1 ) ),
+    "C_Tot_DiffZero", COUNTROWS ( FILTER ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal] && FACT_RECONC[DiffEUR] = 0 && NOT ISBLANK ( FACT_RECONC[DiffEUR] ) ) ),
+    "C_Det_DiffBlank",COUNTROWS ( FILTER ( FACT_RECONC, NOT FACT_RECONC[IsEnvelopeTotal] && NOT FACT_RECONC[IsSubTotalUE] && NOT FACT_RECONC[IsSubTotalPr]
+                          && ISBLANK ( FACT_RECONC[DiffEUR] ) ) ),
+    "H_Tot",          COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsEnvelopeTotal] ) ),
+    "H_Tot_DiffBlank",COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsEnvelopeTotal] && ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) ) ),
+    "H_Tot_Match",    COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsEnvelopeTotal] && NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] )
+                          && ABS ( FACT_RECONC_HIST[AuthoEUR] - FACT_RECONC_HIST[UtilEUR] - FACT_RECONC_HIST[DiffEUR] ) <= 1 ) ),
+    "H_Tot_DiffZero", COUNTROWS ( FILTER ( FACT_RECONC_HIST, FACT_RECONC_HIST[IsEnvelopeTotal] && FACT_RECONC_HIST[DiffEUR] = 0 && NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) ) ),
+    "H_Det_DiffZero", COUNTROWS ( FILTER ( FACT_RECONC_HIST, NOT FACT_RECONC_HIST[IsEnvelopeTotal] && NOT FACT_RECONC_HIST[IsSubTotalUE] && NOT FACT_RECONC_HIST[IsSubTotalPr]
+                          && FACT_RECONC_HIST[DiffEUR] = 0 && NOT ISBLANK ( FACT_RECONC_HIST[DiffEUR] ) ) )
+)
+
+
+// ---------- R4 — RECONC: sample total lines where A - U <> D (one HIST day, one current day)
+EVALUATE
+VAR _d = DATE ( 2025, 9, 17 )
+RETURN
+    TOPN ( 15,
+        SELECTCOLUMNS (
+            FILTER ( FACT_RECONC_HIST,
+                FACT_RECONC_HIST[SnapshotDate] = _d && FACT_RECONC_HIST[IsEnvelopeTotal]
+                && ABS ( FACT_RECONC_HIST[AuthoEUR] - FACT_RECONC_HIST[UtilEUR] - FACT_RECONC_HIST[DiffEUR] ) > 1 ),
+            "Auth",      FACT_RECONC_HIST[AuthorisationId],
+            "Tenor",     FACT_RECONC_HIST[TenorQuantite] & FACT_RECONC_HIST[TenorUnite],
+            "Ccy",       FACT_RECONC_HIST[CurrCode],
+            "AuthoOrig", FACT_RECONC_HIST[AuthoOrigCcy],
+            "AuthoEUR",  FACT_RECONC_HIST[AuthoEUR],
+            "UtilEUR",   FACT_RECONC_HIST[UtilEUR],
+            "DiffEUR",   FACT_RECONC_HIST[DiffEUR]
+        ),
+        [AuthoEUR], DESC )
+
+EVALUATE
+VAR _d = DATE ( 2026, 9, 17 )
+RETURN
+    TOPN ( 15,
+        SELECTCOLUMNS (
+            FILTER ( FACT_RECONC,
+                FACT_RECONC[SnapshotDate] = _d && FACT_RECONC[IsEnvelopeTotal]
+                && NOT ISBLANK ( FACT_RECONC[DiffEUR] )
+                && ABS ( FACT_RECONC[AuthoEUR] - FACT_RECONC[UtilEUR] - FACT_RECONC[DiffEUR] ) > 1 ),
+            "Auth",      FACT_RECONC[AuthorisationId],
+            "Tenor",     FACT_RECONC[TenorQuantite] & FACT_RECONC[TenorUnite],
+            "Ccy",       FACT_RECONC[CurrCode],
+            "AuthoOrig", FACT_RECONC[AuthoOrigCcy],
+            "AuthoEUR",  FACT_RECONC[AuthoEUR],
+            "UtilEUR",   FACT_RECONC[UtilEUR],
+            "DiffEUR",   FACT_RECONC[DiffEUR]
+        ),
+        [AuthoEUR], DESC )
+
+
+// ---------- R5 — 06 envelopes: does every member row repeat the envelope Amount/Util? -
+// Q8 showed auth 97859 / group 167038: ~150 CPYs, each row Amount 4bn, Util 360.8m,
+// UtilCPY = that CPY's own share. If that holds model-wide, any SUM(Amount) or
+// SUM(Utilisation) over 06 rows counts each envelope once per member.
 EVALUATE
 VAR _d = MAX ( FACT_LIMIT_06[SnapshotDate] )
 RETURN
-    TOPN (
-        30,
-        SELECTCOLUMNS (
-            FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[SnapshotDate] = _d && FACT_LIMIT_06[UtilCPY] <> 0 ),
-            "Grp",     FACT_LIMIT_06[RicosIdRegroup],
-            "CPY",     FACT_LIMIT_06[HeadOfficeSirisId],
-            "Auth",    FACT_LIMIT_06[AuthorisationId],
-            "Amount",  FACT_LIMIT_06[Amount],
-            "Util",    FACT_LIMIT_06[Utilisation],
-            "UtilCPY", FACT_LIMIT_06[UtilCPY]
-        ),
-        [Grp], ASC
-    )
-ORDER BY [Grp], [CPY]
-
-
-// ---------- Q9 — RECONC: authorisations whose ONLY line is the total line ------------
-// Added after reading the raw 2026 row: auth 655025 has a single 6M line flagged
-// IsLigneTotal = Y. The (Individual) measures keep detail lines only (all three flags
-// FALSE), so an authorisation that has nothing but a total line is invisible to them.
-// Util_Total_TotalOnly = the EUR utilisation those measures miss on the latest date.
-EVALUATE
-VAR _d = MAX ( FACT_RECONC[SnapshotDate] )
-VAR _a =
     ADDCOLUMNS (
-        CALCULATETABLE ( VALUES ( FACT_RECONC[AuthorisationId] ), FACT_RECONC[SnapshotDate] = _d ),
-        "D_Lines", CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d,
-                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
-        "T_Lines", CALCULATE ( COUNTROWS ( FACT_RECONC ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[IsEnvelopeTotal] = TRUE () ),
-        "D_Util",  CALCULATE ( SUM ( FACT_RECONC[UtilEUR] ), FACT_RECONC[SnapshotDate] = _d,
-                       FACT_RECONC[IsEnvelopeTotal] = FALSE (), FACT_RECONC[IsSubTotalUE] = FALSE (), FACT_RECONC[IsSubTotalPr] = FALSE () ),
-        "T_Util",  CALCULATE ( SUM ( FACT_RECONC[UtilEUR] ), FACT_RECONC[SnapshotDate] = _d, FACT_RECONC[IsEnvelopeTotal] = TRUE () )
+        CALCULATETABLE ( VALUES ( FACT_LIMIT_06[AuthorisationId] ),
+            FACT_LIMIT_06[SnapshotDate] = _d, FACT_LIMIT_06[StructureType] = "Envelope" ),
+        "Grp",         CALCULATE ( MAX ( FACT_LIMIT_06[RicosIdRegroup] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Grps",        CALCULATE ( DISTINCTCOUNT ( FACT_LIMIT_06[RicosIdRegroup] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Members",     CALCULATE ( DISTINCTCOUNT ( FACT_LIMIT_06[HeadOfficeSirisId] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Rows",        CALCULATE ( COUNTROWS ( FACT_LIMIT_06 ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Rows_UtilCPY0", CALCULATE ( COUNTROWS ( FACT_LIMIT_06 ), FACT_LIMIT_06[SnapshotDate] = _d, FACT_LIMIT_06[StructureType] <> "Envelope" ),
+        "Amt_Min",     CALCULATE ( MIN ( FACT_LIMIT_06[Amount] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Amt_Max",     CALCULATE ( MAX ( FACT_LIMIT_06[Amount] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Util_Min",    CALCULATE ( MIN ( FACT_LIMIT_06[Utilisation] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Util_Max",    CALCULATE ( MAX ( FACT_LIMIT_06[Utilisation] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Sum_UtilCPY", CALCULATE ( SUM ( FACT_LIMIT_06[UtilCPY] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Sum_Util",    CALCULATE ( SUM ( FACT_LIMIT_06[Utilisation] ), FACT_LIMIT_06[SnapshotDate] = _d )
     )
+ORDER BY [Members] DESC
+// Rows_UtilCPY0 > 0 => some rows on an envelope authorisation are NOT tagged "Envelope"
+// (UtilCPY empty/0 for a member) => the UtilCPY<>0 signal misses members.
+
+
+// ---------- R6 — 06 latest date: naive SUM vs envelope-deduplicated -----------------
+EVALUATE
+VAR _d = MAX ( FACT_LIMIT_06[SnapshotDate] )
+VAR _env =
+    CALCULATETABLE ( VALUES ( FACT_LIMIT_06[AuthorisationId] ),
+        FACT_LIMIT_06[SnapshotDate] = _d, FACT_LIMIT_06[StructureType] = "Envelope" )
 RETURN
     ROW (
-        "Auths",                COUNTROWS ( _a ),
-        "Auths_TotalOnly",      COUNTROWS ( FILTER ( _a, [D_Lines] = 0 && [T_Lines] > 0 ) ),
-        "Auths_DetailOnly",     COUNTROWS ( FILTER ( _a, [D_Lines] > 0 && [T_Lines] = 0 ) ),
-        "Auths_Both",           COUNTROWS ( FILTER ( _a, [D_Lines] > 0 && [T_Lines] > 0 ) ),
-        "Util_Detail_All",      SUMX ( _a, [D_Util] ),
-        "Util_Total_All",       SUMX ( _a, [T_Util] ),
-        "Util_Total_TotalOnly", SUMX ( FILTER ( _a, [D_Lines] = 0 && [T_Lines] > 0 ), [T_Util] )
+        "Util_SUM_all_rows",     CALCULATE ( SUM ( FACT_LIMIT_06[Utilisation] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Util_SUM_env_rows",     CALCULATE ( SUM ( FACT_LIMIT_06[Utilisation] ), FACT_LIMIT_06[SnapshotDate] = _d, FACT_LIMIT_06[StructureType] = "Envelope" ),
+        "Util_env_once_per_auth",SUMX ( _env, CALCULATE ( MAX ( FACT_LIMIT_06[Utilisation] ), FACT_LIMIT_06[SnapshotDate] = _d ) ),
+        "Amt_SUM_all_rows",      CALCULATE ( SUM ( FACT_LIMIT_06[Amount] ), FACT_LIMIT_06[SnapshotDate] = _d ),
+        "Amt_SUM_env_rows",      CALCULATE ( SUM ( FACT_LIMIT_06[Amount] ), FACT_LIMIT_06[SnapshotDate] = _d, FACT_LIMIT_06[StructureType] = "Envelope" ),
+        "Amt_env_once_per_auth", SUMX ( _env, CALCULATE ( MAX ( FACT_LIMIT_06[Amount] ), FACT_LIMIT_06[SnapshotDate] = _d ) )
     )
 
 
-// ---------- Q10 — RECONC: is the extract Cb-only? --------------------------------
-// There is no E1010001 column in RECONC; NiveauCouvert = "OBE" on the sample row.
-// One value only => the extract is already scoped; several => an entity filter is needed.
+// ---------- R7 — 06 blank Utilisation (19% current, 23% HIST): real zero or failed parse?
 EVALUATE
-SUMMARIZECOLUMNS ( FACT_RECONC[NiveauCouvert], "Rows", COUNTROWS ( FACT_RECONC ) )
-]
+VAR _b = FILTER ( FACT_LIMIT_06, ISBLANK ( FACT_LIMIT_06[Utilisation] ) )
+RETURN
+    ROW (
+        "Blank_Util",           COUNTROWS ( _b ),
+        "Avail_eq_Amount",      COUNTROWS ( FILTER ( _b, FACT_LIMIT_06[Available] = FACT_LIMIT_06[Amount] ) ),
+        "Avail_blank",          COUNTROWS ( FILTER ( _b, ISBLANK ( FACT_LIMIT_06[Available] ) ) ),
+        "Avail_lt_Amount",      COUNTROWS ( FILTER ( _b, FACT_LIMIT_06[Available] < FACT_LIMIT_06[Amount] ) ),
+        "Envelope",             COUNTROWS ( FILTER ( _b, FACT_LIMIT_06[StructureType] = "Envelope" ) ),
+        "Bride",                COUNTROWS ( FILTER ( _b, FACT_LIMIT_06[StructureType] = "Bride" ) )
+    )
+// Avail_lt_Amount > 0 => utilisation exists but did not parse => understated.
 
 
+// ---------- R8 — 06 HIST StructureType: blank for every non-bride row? -------------
+// Prediction: UtilCPY is numeric in the HIST Parquet, Text.Trim() errors on it, and the
+// error only fires when the row is not a bride (M evaluates lazily), so the cell loads blank.
+// Expect H_StructBlank ~= 14,092,251 - 711,246 = 13,381,005.
+EVALUATE
+ROW (
+    "H_StructBlank",  COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, ISBLANK ( FACT_LIMIT_06_HIST[StructureType] ) ) ),
+    "H_Standalone",   COUNTROWS ( FILTER ( FACT_LIMIT_06_HIST, FACT_LIMIT_06_HIST[StructureType] = "Standalone" ) ),
+    "C_StructBlank",  COUNTROWS ( FILTER ( FACT_LIMIT_06, ISBLANK ( FACT_LIMIT_06[StructureType] ) ) ),
+    "C_Standalone",   COUNTROWS ( FILTER ( FACT_LIMIT_06, FACT_LIMIT_06[StructureType] = "Standalone" ) )
+)
 
 
-P1 parquet 
-
-==================
-
-
-// ---------- M1 — chk_16A_HIST: columns present + entity (OBE) content per Parquet file --
-// Why: 16A_HIST keeps rows where OBE is null ("[OBE] = null or ..."); the current query
-// keeps only "E1010001". And 16A_HIST's MasterColumns omits SGCType / CPHGroupName /
-// ControleZone. This shows whether those three exist in the Parquet at all, and how many
-// history rows have a blank or non-Cb entity.
-let
-    Src = Folder.Files("G:\_CCC_Data\BMT16A\Historical - Parquet"),
-    Pq  = Table.SelectRows(Src, each [Extension] = ".parquet"),
-    Chk = Table.AddColumn(Pq, "R", each
-        let
-            t    = Parquet.Document([Content]),
-            cols = Table.ColumnNames(t),
-            obe  = if List.Contains(cols, "OBE") then Table.Column(t, "OBE") else {}
-        in
-            [
-                Has_SGCType      = List.Contains(cols, "SGCType"),
-                Has_CPHGroupName = List.Contains(cols, "CPHGroupName"),
-                Has_ControleZone = List.Contains(cols, "ControleZone"),
-                Has_OBE          = List.Contains(cols, "OBE"),
-                Rows             = Table.RowCount(t),
-                OBE_Blank        = List.Count(List.Select(obe, each _ = null or _ = "")),
-                OBE_NonCbxxx     = List.Count(List.Select(obe, each _ <> null and _ <> "" and _ <> "E1010001"))
-            ]),
-    Out = Table.ExpandRecordColumn(
-            Table.SelectColumns(Chk, {"Name", "R"}), "R",
-            {"Has_SGCType", "Has_CPHGroupName", "Has_ControleZone", "Has_OBE", "Rows", "OBE_Blank", "OBE_NonCbxxx"})
-in
-    Out
-
-
-// ---------- M2 — chk_RECONC_HIST: Parquet column TYPES for the fragile columns ----------
-// Why: the HIST query compares ValidityDate / flags with text ("" and "Y") and runs
-// Text.Start on ValidityDate. If the bake stored any of these as numbers or booleans,
-// the comparison is silently false / the parse silently null. Also shows whether the
-// Parquet carries its own SnapshotDate (the HIST query prefers it if present), and which
-// spelling of the bride-util column exists (UTil vs Util). "MISSING" = column not there.
-let
-    Src = Folder.Files("G:\_CCC_Data\repo\RECONC\Historical - Parquet"),
-    Pq  = Table.SelectRows(Src, each [Extension] = ".parquet"),
-    Chk = Table.AddColumn(Pq, "R", each
-        let
-            s   = Table.Schema(Parquet.Document([Content])),
-            typ = (c as text) =>
-                    let r = Table.SelectRows(s, each [Name] = c)
-                    in  if Table.IsEmpty(r) then "MISSING" else r{0}[TypeName]
-        in
-            [
-                SnapshotDate           = typ("SnapshotDate"),
-                ContextId              = typ("ContextId"),
-                ValidityDate           = typ("ValidityDate"),
-                IsLigneTotal           = typ("IsLigneTotal"),
-                IMntDepasse            = typ("IMntDepasse"),
-                ConvertMontantAuthoEUR = typ("ConvertMontantAuthoEUR"),
-                ConvertMontantDiffEUR  = typ("ConvertMontantDiffEUR"),
-                ConvertBrideUTilEUR    = typ("ConvertBrideUTilEUR"),
-                ConvertBrideUtilEUR    = typ("ConvertBrideUtilEUR"),
-                SirisIdEntryAut        = typ("SirisIdEntryAut")
-            ]),
-    Out = Table.ExpandRecordColumn(
-            Table.SelectColumns(Chk, {"Name", "R"}), "R",
-            {"SnapshotDate", "ContextId", "ValidityDate", "IsLigneTotal", "IMntDepasse",
-             "ConvertMontantAuthoEUR", "ConvertMontantDiffEUR",
-             "ConvertBrideUTilEUR", "ConvertBrideUtilEUR", "SirisIdEntryAut"})
-in
-    Out
-
-
-
+// ---------- R9 — 16A envelopes: same repetition question as R5 ----------------------
+EVALUATE
+VAR _d = MAX ( FACT_LIMIT_16A[SnapshotDate] )
+RETURN
+    TOPN ( 15,
+        ADDCOLUMNS (
+            CALCULATETABLE ( VALUES ( FACT_LIMIT_16A[EnvelopeHolderId] ),
+                FACT_LIMIT_16A[SnapshotDate] = _d, NOT ISBLANK ( FACT_LIMIT_16A[EnvelopeHolderId] ) ),
+            "Members",  CALCULATE ( DISTINCTCOUNT ( FACT_LIMIT_16A[HeadOfficeSirisId] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "Auths",    CALCULATE ( DISTINCTCOUNT ( FACT_LIMIT_16A[AuthorisationId] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "Amt_Min",  CALCULATE ( MIN ( FACT_LIMIT_16A[Amount] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "Amt_Max",  CALCULATE ( MAX ( FACT_LIMIT_16A[Amount] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "Util_Min", CALCULATE ( MIN ( FACT_LIMIT_16A[Utilisation] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "Util_Max", CALCULATE ( MAX ( FACT_LIMIT_16A[Utilisation] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "Util_Sum", CALCULATE ( SUM ( FACT_LIMIT_16A[Utilisation] ), FACT_LIMIT_16A[SnapshotDate] = _d ),
+            "HolderOwnRows",
+                VAR _h = FACT_LIMIT_16A[EnvelopeHolderId]
+                RETURN CALCULATE ( COUNTROWS ( FACT_LIMIT_16A ),
+                    REMOVEFILTERS ( FACT_LIMIT_16A[EnvelopeHolderId] ),
+                    FACT_LIMIT_16A[SnapshotDate] = _d,
+                    FACT_LIMIT_16A[HeadOfficeSirisId] = FORMAT ( _h, "0000000000" ) )
+        ),
+        [Members], DESC )
