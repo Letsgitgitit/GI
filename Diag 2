@@ -209,3 +209,63 @@ RETURN
                     FACT_LIMIT_16A[HeadOfficeSirisId] = FORMAT ( _h, "0000000000" ) )
         ),
         [Members], DESC )
+
+
+
+
+
+// ---------- R10 — 06: what does RicosIdRegroup mean outside envelopes? -------------
+// Decides the new 06 envelope rule. Latest date, one row per (Auth, CPY).
+//   Multi-CPY auth  = an AuthorisationId shared by 2+ CPYs that day (envelope candidate).
+//   Regroup_eq_own  = RicosIdRegroup is the CPY's own Ricos.
+EVALUATE
+VAR _d = MAX ( FACT_LIMIT_06[SnapshotDate] )
+VAR _r =
+    ADDCOLUMNS (
+        CALCULATETABLE (
+            SUMMARIZE ( FACT_LIMIT_06,
+                FACT_LIMIT_06[AuthorisationId], FACT_LIMIT_06[HeadOfficeSirisId],
+                FACT_LIMIT_06[RicosIdRegroup],  FACT_LIMIT_06[BrideId] ),
+            FACT_LIMIT_06[SnapshotDate] = _d ),
+        "CPYsOnAuth",
+            VAR _a = FACT_LIMIT_06[AuthorisationId]
+            RETURN CALCULATE ( DISTINCTCOUNT ( FACT_LIMIT_06[HeadOfficeSirisId] ),
+                       REMOVEFILTERS ( FACT_LIMIT_06 ),
+                       FACT_LIMIT_06[AuthorisationId] = _a, FACT_LIMIT_06[SnapshotDate] = _d ),
+        "HasRegroup", FACT_LIMIT_06[RicosIdRegroup] <> "",
+        "IsBride",    FACT_LIMIT_06[BrideId] <> "",
+        "RegroupEqOwn",
+            IF ( FACT_LIMIT_06[RicosIdRegroup] <> "",
+                 IFERROR ( VALUE ( FACT_LIMIT_06[RicosIdRegroup] ) = VALUE ( FACT_LIMIT_06[HeadOfficeSirisId] ), FALSE () ),
+                 FALSE () )
+    )
+RETURN
+    ROW (
+        "Rows",                         COUNTROWS ( _r ),
+        "MultiCPY_auth_rows",           COUNTROWS ( FILTER ( _r, [CPYsOnAuth] > 1 ) ),
+        "MultiCPY_and_Bride",           COUNTROWS ( FILTER ( _r, [CPYsOnAuth] > 1 && [IsBride] ) ),
+        "MultiCPY_Regroup_blank",       COUNTROWS ( FILTER ( _r, [CPYsOnAuth] > 1 && NOT [HasRegroup] ) ),
+        "SingleCPY_Regroup_set",        COUNTROWS ( FILTER ( _r, [CPYsOnAuth] = 1 && [HasRegroup] ) ),
+        "SingleCPY_Regroup_eq_own",     COUNTROWS ( FILTER ( _r, [CPYsOnAuth] = 1 && [RegroupEqOwn] ) ),
+        "SingleCPY_Regroup_other",      COUNTROWS ( FILTER ( _r, [CPYsOnAuth] = 1 && [HasRegroup] && NOT [RegroupEqOwn] ) ),
+        "SingleCPY_Regroup_blank",      COUNTROWS ( FILTER ( _r, [CPYsOnAuth] = 1 && NOT [HasRegroup] ) )
+    )
+
+
+// ---------- R11 — RECONC current: when does DiffEUR = 0 on total lines? -----------
+// Round 2: 225,619 of 449,880 current total lines have Diff = 0, but none on 17 Sep 2026.
+// If the zeros stop at a date, the source files changed then.
+EVALUATE
+VAR _t =
+    SELECTCOLUMNS (
+        FILTER ( FACT_RECONC, FACT_RECONC[IsEnvelopeTotal] ),
+        "M", EOMONTH ( FACT_RECONC[SnapshotDate], 0 ),
+        "Z", IF ( FACT_RECONC[DiffEUR] = 0 && FACT_RECONC[AuthoEUR] <> FACT_RECONC[UtilEUR], 1, 0 ),
+        "X", IF ( ABS ( FACT_RECONC[AuthoEUR] - FACT_RECONC[UtilEUR] - FACT_RECONC[DiffEUR] ) > 1, 1, 0 )
+    )
+RETURN
+    GROUPBY ( _t, [M],
+        "TotalLines",        SUMX ( CURRENTGROUP (), 1 ),
+        "Diff0_withHeadroom",SUMX ( CURRENTGROUP (), [Z] ),
+        "Diff_neq_A_minus_U",SUMX ( CURRENTGROUP (), [X] ) )
+ORDER BY [M]
