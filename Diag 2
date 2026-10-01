@@ -288,7 +288,7 @@ RETURN
     )
 
 
-// ---------- Q10 — RECONC: is the extract CA-CIB-only? --------------------------------
+// ---------- Q10 — RECONC: is the extract Cb-only? --------------------------------
 // There is no E1010001 column in RECONC; NiveauCouvert = "OBE" on the sample row.
 // One value only => the extract is already scoped; several => an entity filter is needed.
 EVALUATE
@@ -307,7 +307,7 @@ P1 parquet
 // Why: 16A_HIST keeps rows where OBE is null ("[OBE] = null or ..."); the current query
 // keeps only "E1010001". And 16A_HIST's MasterColumns omits SGCType / CPHGroupName /
 // ControleZone. This shows whether those three exist in the Parquet at all, and how many
-// history rows have a blank or non-CA-CIB entity.
+// history rows have a blank or non-Cb entity.
 let
     Src = Folder.Files("G:\_CCC_Data\BMT16A\Historical - Parquet"),
     Pq  = Table.SelectRows(Src, each [Extension] = ".parquet"),
@@ -324,11 +324,11 @@ let
                 Has_OBE          = List.Contains(cols, "OBE"),
                 Rows             = Table.RowCount(t),
                 OBE_Blank        = List.Count(List.Select(obe, each _ = null or _ = "")),
-                OBE_NonCACIB     = List.Count(List.Select(obe, each _ <> null and _ <> "" and _ <> "E1010001"))
+                OBE_NonCbxxx     = List.Count(List.Select(obe, each _ <> null and _ <> "" and _ <> "E1010001"))
             ]),
     Out = Table.ExpandRecordColumn(
             Table.SelectColumns(Chk, {"Name", "R"}), "R",
-            {"Has_SGCType", "Has_CPHGroupName", "Has_ControleZone", "Has_OBE", "Rows", "OBE_Blank", "OBE_NonCACIB"})
+            {"Has_SGCType", "Has_CPHGroupName", "Has_ControleZone", "Has_OBE", "Rows", "OBE_Blank", "OBE_NonCbxxx"})
 in
     Out
 
