@@ -269,3 +269,94 @@ RETURN
         "Diff0_withHeadroom",SUMX ( CURRENTGROUP (), [Z] ),
         "Diff_neq_A_minus_U",SUMX ( CURRENTGROUP (), [X] ) )
 ORDER BY [M]
+
+
+
+======================================
+//
+// HOW TO READ IT
+//  A. Dates (rows 02–09)
+//     Row 03/05/07 Current = 0 while Hist > 0  -> the model locale is month-first (en-US).
+//       Date.From("26/03/2026") fails -> null (rows 02/04/06 inflated), and every date with
+//       day <= 12 has day and month SWAPPED. Row 08 confirms it: swapped trade dates land
+//       after the snapshot date. If rows 03/05/07 are similar on both sides, dates are fine.
+//  B. Empty text vs null (rows 10–14)
+//     Csv.Document yields "" for empty fields, not null. Expected consequence in the live
+//     query: blank ids are padded to "0000000000" (row 10/12) and text columns carry ""
+//     where the HIST gold carries null (row 14 vs row 13).
+//  C. Number parse order (rows 15–16)
+//     Row 15 Current > 0 (and Hist ~0) -> decimal-comma values such as "-0,05" were accepted
+//     by the en-US attempt as thousands-separated numbers (silent x10^n), so the comma->period
+//     fallback never ran for them.
+// =====================================================================================
+
+EVALUATE
+UNION (
+    ROW ( "Check", "01 Rows",
+          "Current", COUNTROWS ( FACT_ALLREPO ) + 0,
+          "Hist",    COUNTROWS ( FACT_ALLREPO_HIST ) + 0 ),
+
+    // ---- A. Dates ------------------------------------------------------------------
+    ROW ( "Check", "02 TradeDate blank",
+          "Current", CALCULATE ( COUNTROWS ( FACT_ALLREPO ), ISBLANK ( FACT_ALLREPO[TradeDate] ) ) + 0,
+          "Hist",    CALCULATE ( COUNTROWS ( FACT_ALLREPO_HIST ), ISBLANK ( FACT_ALLREPO_HIST[TradeDate] ) ) + 0 ),
+    ROW ( "Check", "03 TradeDate day > 12",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO,
+                         NOT ISBLANK ( FACT_ALLREPO[TradeDate] ) && DAY ( FACT_ALLREPO[TradeDate] ) > 12 ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST,
+                         NOT ISBLANK ( FACT_ALLREPO_HIST[TradeDate] ) && DAY ( FACT_ALLREPO_HIST[TradeDate] ) > 12 ) ) + 0 ),
+    ROW ( "Check", "04 StartDate blank",
+          "Current", CALCULATE ( COUNTROWS ( FACT_ALLREPO ), ISBLANK ( FACT_ALLREPO[StartDate] ) ) + 0,
+          "Hist",    CALCULATE ( COUNTROWS ( FACT_ALLREPO_HIST ), ISBLANK ( FACT_ALLREPO_HIST[StartDate] ) ) + 0 ),
+    ROW ( "Check", "05 StartDate day > 12",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO,
+                         NOT ISBLANK ( FACT_ALLREPO[StartDate] ) && DAY ( FACT_ALLREPO[StartDate] ) > 12 ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST,
+                         NOT ISBLANK ( FACT_ALLREPO_HIST[StartDate] ) && DAY ( FACT_ALLREPO_HIST[StartDate] ) > 12 ) ) + 0 ),
+    ROW ( "Check", "06 MaturityDate blank",
+          "Current", CALCULATE ( COUNTROWS ( FACT_ALLREPO ), ISBLANK ( FACT_ALLREPO[MaturityDate] ) ) + 0,
+          "Hist",    CALCULATE ( COUNTROWS ( FACT_ALLREPO_HIST ), ISBLANK ( FACT_ALLREPO_HIST[MaturityDate] ) ) + 0 ),
+    ROW ( "Check", "07 MaturityDate day > 12",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO,
+                         NOT ISBLANK ( FACT_ALLREPO[MaturityDate] ) && DAY ( FACT_ALLREPO[MaturityDate] ) > 12 ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST,
+                         NOT ISBLANK ( FACT_ALLREPO_HIST[MaturityDate] ) && DAY ( FACT_ALLREPO_HIST[MaturityDate] ) > 12 ) ) + 0 ),
+    ROW ( "Check", "08 TradeDate after SnapshotDate",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO,
+                         FACT_ALLREPO[TradeDate] > FACT_ALLREPO[SnapshotDate] ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST,
+                         FACT_ALLREPO_HIST[TradeDate] > FACT_ALLREPO_HIST[SnapshotDate] ) ) + 0 ),
+    ROW ( "Check", "09 SnapshotDate blank",
+          "Current", CALCULATE ( COUNTROWS ( FACT_ALLREPO ), ISBLANK ( FACT_ALLREPO[SnapshotDate] ) ) + 0,
+          "Hist",    CALCULATE ( COUNTROWS ( FACT_ALLREPO_HIST ), ISBLANK ( FACT_ALLREPO_HIST[SnapshotDate] ) ) + 0 ),
+
+    // ---- B. Empty text vs null ("==" is strict: BLANK() == "" is FALSE) -------------
+    ROW ( "Check", "10 IssuerId == 0000000000",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO, FACT_ALLREPO[IssuerId] == "0000000000" ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, FACT_ALLREPO_HIST[IssuerId] == "0000000000" ) ) + 0 ),
+    ROW ( "Check", "11 IssuerId blank (null)",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO, ISBLANK ( FACT_ALLREPO[IssuerId] ) ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, ISBLANK ( FACT_ALLREPO_HIST[IssuerId] ) ) ) + 0 ),
+    ROW ( "Check", "12 HeadOfficeSirisId == 0000000000",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO, FACT_ALLREPO[HeadOfficeSirisId] == "0000000000" ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, FACT_ALLREPO_HIST[HeadOfficeSirisId] == "0000000000" ) ) + 0 ),
+    ROW ( "Check", "13 IsLevFund blank (null)",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO, ISBLANK ( FACT_ALLREPO[IsLevFund] ) ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, ISBLANK ( FACT_ALLREPO_HIST[IsLevFund] ) ) ) + 0 ),
+    ROW ( "Check", "14 IsLevFund empty text",
+          "Current", COUNTROWS ( FILTER ( FACT_ALLREPO, FACT_ALLREPO[IsLevFund] == "" ) ) + 0,
+          "Hist",    COUNTROWS ( FILTER ( FACT_ALLREPO_HIST, FACT_ALLREPO_HIST[IsLevFund] == "" ) ) + 0 ),
+
+    // ---- C. Number parse order ------------------------------------------------------
+    ROW ( "Check", "15 Haircut RATIO with |Haircut| >= 1",
+          "Current", CALCULATE ( COUNTROWS ( FACT_ALLREPO ),
+                         FACT_ALLREPO[HaircutMethod] = "RATIO", ABS ( FACT_ALLREPO[Haircut] ) >= 1 ) + 0,
+          "Hist",    CALCULATE ( COUNTROWS ( FACT_ALLREPO_HIST ),
+                         FACT_ALLREPO_HIST[HaircutMethod] = "RATIO", ABS ( FACT_ALLREPO_HIST[Haircut] ) >= 1 ) + 0 ),
+    ROW ( "Check", "16 Haircut RATIO non-blank",
+          "Current", CALCULATE ( COUNTROWS ( FACT_ALLREPO ),
+                         FACT_ALLREPO[HaircutMethod] = "RATIO", NOT ISBLANK ( FACT_ALLREPO[Haircut] ) ) + 0,
+          "Hist",    CALCULATE ( COUNTROWS ( FACT_ALLREPO_HIST ),
+                         FACT_ALLREPO_HIST[HaircutMethod] = "RATIO", NOT ISBLANK ( FACT_ALLREPO_HIST[Haircut] ) ) + 0 )
+)
+ORDER BY [Check]
