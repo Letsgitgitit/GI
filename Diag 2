@@ -360,3 +360,13 @@ UNION (
                          FACT_ALLREPO_HIST[HaircutMethod] = "RATIO", NOT ISBLANK ( FACT_ALLREPO_HIST[Haircut] ) ) + 0 )
 )
 ORDER BY [Check]
+
+
+
+// 8. PARSE TRADE DATES — source is dd/MM/yyyy; culture pinned so the
+//    model locale (en-US) can no longer swap day/month or null day > 12
+ParseDates = Table.TransformColumns(AddSnapshotDate, {
+    {"TradeDate",    each try Date.From(_, "en-GB") otherwise null, type nullable date},
+    {"StartDate",    each try Date.From(_, "en-GB") otherwise null, type nullable date},
+    {"MaturityDate", each try Date.From(_, "en-GB") otherwise null, type nullable date}
+}),
