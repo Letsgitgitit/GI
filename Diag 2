@@ -373,13 +373,20 @@ ParseDates = Table.TransformColumns(AddSnapshotDate, {
 
 
 
-EVALUATE
-TOPN ( 30,
-    SUMMARIZECOLUMNS (
-        FACT_ALLREPO[Haircut],
-        FILTER ( ALL ( FACT_ALLREPO[HaircutMethod] ), FACT_ALLREPO[HaircutMethod] = "RATIO" ),
-        FILTER ( ALL ( FACT_ALLREPO[Haircut] ), ABS ( FACT_ALLREPO[Haircut] ) >= 1 ),
-        "Rows", COUNTROWS ( FACT_ALLREPO ),
-        "Dates", DISTINCTCOUNT ( FACT_ALLREPO[SnapshotDate] )
-    ),
-    [Rows], DESC )
+DROPPED_MASTER_COLS: list[str] = [
+    "ContextId",              # -> becomes SnapshotDate
+    "OBEId",                  # -> used for row filter only
+    "OBEIdName",
+    "FreezeCP", "FreezeCPDate",
+    "FreezeCP_SSJ", "FreezeCP_SSJDate",
+    "RestrictedDealsCP", "RestrictedDealsCPDate",
+]   # 9 entries -> master 90, known headers 92
+
+except ValueError:
+                stats.setdefault("date_bad", {}).setdefault(col, []).append(val)
+
+    for col, bad in stats.get("date_bad", {}).items():
+        stats["errors"].append(
+            f"{col}: {len(bad):,} value(s) with valid shape but impossible date, e.g. {bad[:5]}"
+        )
+
