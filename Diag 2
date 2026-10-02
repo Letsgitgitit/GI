@@ -370,3 +370,16 @@ ParseDates = Table.TransformColumns(AddSnapshotDate, {
     {"StartDate",    each try Date.From(_, "en-GB") otherwise null, type nullable date},
     {"MaturityDate", each try Date.From(_, "en-GB") otherwise null, type nullable date}
 }),
+
+
+
+EVALUATE
+TOPN ( 30,
+    SUMMARIZECOLUMNS (
+        FACT_ALLREPO[Haircut],
+        FILTER ( ALL ( FACT_ALLREPO[HaircutMethod] ), FACT_ALLREPO[HaircutMethod] = "RATIO" ),
+        FILTER ( ALL ( FACT_ALLREPO[Haircut] ), ABS ( FACT_ALLREPO[Haircut] ) >= 1 ),
+        "Rows", COUNTROWS ( FACT_ALLREPO ),
+        "Dates", DISTINCTCOUNT ( FACT_ALLREPO[SnapshotDate] )
+    ),
+    [Rows], DESC )
